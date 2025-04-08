@@ -30,6 +30,7 @@ class PostController extends Controller
             'content' => 'required',
             'visibility' => 'required|in:public,private',
             'image' => 'nullable|image|max:2048',
+            'tags' => 'nullable|array',
         ]);
     
         $data = $request->only(['title', 'content', 'visibility']);
@@ -37,9 +38,14 @@ class PostController extends Controller
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('posts', 'public');
         }
-    
+     
         auth()->user()->posts()->create($data);
-    
+        if ($request->tags) {
+            $tagIds = collect($request->tags)->map(function ($name) {
+                return \App\Models\Tag::firstOrCreate(['name' => $name])->id;
+            });
+            $post->tags()->sync($tagIds);
+        }
         return redirect()->route('posts.index');
     }
     
@@ -68,7 +74,13 @@ class PostController extends Controller
         }
     
         $post->update($data);
-    
+
+        if ($request->tags) {
+            $tagIds = collect($request->tags)->map(function ($name) {
+                return \App\Models\Tag::firstOrCreate(['name' => $name])->id;
+            });
+            $post->tags()->sync($tagIds);
+        }
         return redirect()->route('posts.index');
     }
     
@@ -80,5 +92,25 @@ class PostController extends Controller
     
         return redirect()->route('posts.index');
     }
+    public function publicPosts(Request $request)
+{
+    $query = Post::with('user', 'tags')->where('visibility', 'public');
+
+    if ($request->search) {
+        $search = $request->search;
+
+        $query->where(function ($q) use ($search) {
+            $q->where('title', 'like', "%$search%")
+              ->orWhere('content', 'like', "%$search%")
+              ->orWhereHas('user', fn($q) => $q->where('username', 'like', "%$search%"))
+              ->orWhereHas('tags', fn($q) => $q->where('name', 'like', "%$search%"));
+        });
+    }
+
+    $posts = $query->latest()->get();
+
+    return Inertia::render('PublicFeed', compact('posts'));
+}
+
     
 }

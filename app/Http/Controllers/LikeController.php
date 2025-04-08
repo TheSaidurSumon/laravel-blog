@@ -10,16 +10,27 @@ class LikeController extends Controller
     //
 
 public function toggle(Post $post) {
-    $like = $post->likes()->where('user_id', auth()->id())->first();
 
-    if ($like) {
-        $like->delete();
-    } else {
-        Like::create([
-            'post_id' => $post->id,
-            'user_id' => auth()->id(),
+        $like = Like::where('user_id', auth()->id())
+                    ->where('post_id', $post->id)
+                    ->first();
+
+        if ($like) {
+            $like->delete();
+            
+        } else {
+            $like = Like::create([
+                'user_id' => auth()->id(),
+                'post_id' => $post->id,
+            ]);
+            broadcast(new PostLiked($like))->toOthers();
+        }
+
+        return response()->json([
+            'liked' => !$like->wasRecentlyCreated,
+            'like_count' => $post->likes()->count()
         ]);
-
+    
         // Send notification to post owner if not self-like
         if ($post->user_id !== auth()->id()) {
             Notification::create([
@@ -28,9 +39,10 @@ public function toggle(Post $post) {
                 'message' => auth()->user()->username . ' liked your post.',
             ]);
         }
+        return response()->json(['success' => true]);
     }
 
-    return response()->json(['success' => true]);
-}
+   
+
 
 }

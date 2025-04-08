@@ -10,17 +10,23 @@ class CommentController extends Controller
 
 
 public function store(Request $request, Post $post) {
-    $request->validate([
-        'content' => 'required|string',
+    $data = $request->validate([
+        'post_id' => 'required|exists:posts,id',
+        'content' => 'required',
         'parent_id' => 'nullable|exists:comments,id',
     ]);
-
     $comment = Comment::create([
         'user_id' => auth()->id(),
-        'post_id' => $post->id,
-        'parent_id' => $request->parent_id,
-        'content' => $request->content,
+        'post_id' => $data['post_id'],
+        'parent_id' => $data['parent_id'] ?? null,
+        'content' => $data['content'],
     ]);
+
+    $comment->load('user');
+
+    broadcast(new CommentPosted($comment))->toOthers();
+
+    return response()->json($comment);
 
     // Notify post owner or parent comment user
     if ($request->parent_id) {
@@ -41,6 +47,16 @@ public function store(Request $request, Post $post) {
     }
 
     return response()->json($comment);
-}
 
+
+    
+}
+public function destroy(Comment $comment)
+{
+    $this->authorize('delete', $comment); // Add policy
+
+    $comment->delete();
+
+    return response()->json(['message' => 'Comment deleted']);
+}
 }
